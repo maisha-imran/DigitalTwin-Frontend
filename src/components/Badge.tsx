@@ -2,12 +2,12 @@ import { ReactNode } from 'react';
 
 type Variant = 'blue' | 'green' | 'warn' | 'red' | 'ghost';
 
-const styles: Record<Variant, string> = {
-  blue: 'bg-blue-500/15 text-blue-400',
-  green: 'bg-green-500/15 text-green-400',
-  warn: 'bg-yellow-500/15 text-yellow-400',
-  red: 'bg-red-500/15 text-red-400',
-  ghost: 'bg-white/5 text-[var(--text3)]',
+const styles: Record<Variant, { background: string; color: string }> = {
+  blue:  { background: 'rgba(99,102,241,0.1)',  color: '#6366f1' },
+  green: { background: 'rgba(34,197,94,0.1)',   color: '#16a34a' },
+  warn:  { background: 'rgba(234,179,8,0.1)',   color: '#ca8a04' },
+  red:   { background: 'rgba(239,68,68,0.1)',   color: '#dc2626' },
+  ghost: { background: '#f3f4f6',               color: '#9ca3af' },
 };
 
 interface Props {
@@ -18,10 +18,28 @@ interface Props {
 }
 
 export default function Badge({ variant = 'ghost', children, className = '', onClick }: Props) {
+  const s = styles[variant];
   return (
     <span
       onClick={onClick}
-      className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${styles[variant]} ${onClick ? 'cursor-pointer' : ''} ${className}`}
-    >{children}</span>
+      className={className}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '3px 10px',
+        borderRadius: 20,
+        fontSize: 11,
+        fontWeight: 600,
+        background: s.background,
+        color: s.color,
+        cursor: onClick ? 'pointer' : 'default',
+        fontFamily: 'DM Sans, sans-serif',
+        letterSpacing: '0.01em',
+        transition: 'all 0.15s',
+        userSelect: 'none',
+      }}
+    >
+      {children}
+    </span>
   );
 }
