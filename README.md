@@ -7,8 +7,8 @@ The application is built with **React**, **TypeScript**, and **Vite**, featuring
 ## 🏗 Related Repositories
 
 This frontend is part of a larger ecosystem. You can find the other components here:
-* **Backend**: [https://github.com/maisha-imran/DigitalTwin/backend](https://github.com/maisha-imran/DigitalTwin/backend) (FastAPI service)
-* **Notebooks**: [https://github.com/maisha-imran/DigitalTwin/notebooks](https://github.com/maisha-imran/DigitalTwin/notebooks) (Model training and research)
+* **Backend**: [https://github.com/maisha-imran/DigitalTwin/backend](https://github.com/maisha-imran/DigitalTwin) (/backend, FastAPI service)
+* **Notebooks**: [https://github.com/maisha-imran/DigitalTwin/notebooks](https://github.com/maisha-imran/DigitalTwin) (/notebooks, Model training and research)
 
 ## 🚀 Key Features
 
