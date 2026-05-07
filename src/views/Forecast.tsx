@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
-import Panel from '../components/Panel';
 import type { Segment, ForecastYear, ForecastMetric } from '../types';
 import { computeForecast, fmtCost } from '../engine';
 
 Chart.register(...registerables);
 
-interface Props {
-  segments: Segment[];
-}
+interface Props { segments: Segment[]; }
 
-const METRIC_CONFIG: Record<ForecastMetric, { label: string; color: string; format: (v: number) => string }> = {
-  health: { label: 'Health Score', color: '#22c55e', format: v => v.toFixed(1) },
-  iri: { label: 'Avg IRI', color: '#f97316', format: v => v.toFixed(3) },
-  critical: { label: 'Critical Roads', color: '#ef4444', format: v => String(Math.round(v)) },
-  cost: { label: 'Cost ($M)', color: '#3b82f6', format: v => `$${v.toFixed(2)}M` },
+const METRIC_CONFIG: Record<ForecastMetric, { label: string; color: string; grad: string[]; format: (v: number) => string }> = {
+  health: { label: 'Health Score', color: '#22c55e', grad: ['#22c55e', '#16a34a'], format: v => v.toFixed(1) },
+  iri: { label: 'Avg IRI', color: '#f97316', grad: ['#f97316', '#ea580c'], format: v => v.toFixed(3) },
+  critical: { label: 'Critical Roads', color: '#ef4444', grad: ['#ef4444', '#dc2626'], format: v => String(Math.round(v)) },
+  cost: { label: 'Cost ($M)', color: '#6366f1', grad: ['#6366f1', '#4f46e5'], format: v => `$${v.toFixed(2)}M` },
+};
+
+const trendColor = (metric: ForecastMetric, d: ForecastYear) => {
+  if (metric === 'health') return d.health_score >= 65 ? '#22c55e' : d.health_score >= 40 ? '#f97316' : '#ef4444';
+  return '#6366f1';
 };
 
 export default function Forecast({ segments }: Props) {
@@ -27,29 +29,36 @@ export default function Forecast({ segments }: Props) {
   useEffect(() => {
     if (!chartRef.current || data.length === 0) return;
     if (chartInst.current) chartInst.current.destroy();
-    const { label, color, format } = METRIC_CONFIG[metric];
+    const cfg = METRIC_CONFIG[metric];
     const raw = data.map(d => {
       if (metric === 'health') return d.health_score;
       if (metric === 'iri') return d.avg_iri;
       if (metric === 'critical') return d.critical_roads;
       return d.total_repair_cost_usd / 1e6;
     });
-    chartInst.current = new Chart(chartRef.current.getContext('2d')!, {
+
+    const canvas = chartRef.current;
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 0, 280);
+    gradient.addColorStop(0, cfg.color + '28');
+    gradient.addColorStop(1, cfg.color + '04');
+
+    chartInst.current = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.map(d => `Y${d.year}`),
+        labels: data.map(d => `Year ${d.year}`),
         datasets: [{
-          label,
+          label: cfg.label,
           data: raw,
-          borderColor: color,
-          borderWidth: 2.5,
-          pointRadius: 6,
-          pointBackgroundColor: color,
-          pointBorderColor: 'var(--panel)',
-          pointBorderWidth: 2,
-          tension: 0.25,
+          borderColor: cfg.color,
+          borderWidth: 3,
+          pointRadius: 7,
+          pointBackgroundColor: cfg.color,
+          pointBorderColor: '#fff',
+          pointBorderWidth: 3,
+          tension: 0.3,
           fill: true,
-          backgroundColor: color + '14',
+          backgroundColor: gradient,
         }],
       },
       options: {
@@ -57,98 +66,112 @@ export default function Forecast({ segments }: Props) {
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: 'var(--panel2)',
-            titleColor: 'var(--text)',
-            bodyColor: 'var(--text2)',
-            borderColor: 'var(--border2)',
-            borderWidth: 1,
-            callbacks: { label: ctx => `${label}: ${format(ctx.parsed.y)}` },
+            backgroundColor: '#1f2937', titleColor: '#f9fafb', bodyColor: '#d1d5db',
+            borderColor: '#374151', borderWidth: 1, padding: 12, cornerRadius: 10,
+            callbacks: {
+              label: ctx => {
+                const value = ctx.parsed.y ?? 0;
+                return `${cfg.label}: ${cfg.format(value)}`;
+              },
+            },
           },
         },
         scales: {
-          x: { ticks: { color: '#555e72', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-          y: { ticks: { color: '#555e72', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          x: { ticks: { color: '#9ca3af', font: { size: 12, family: 'DM Sans' } }, grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false } },
+          y: { ticks: { color: '#d1d5db', font: { size: 11 } }, grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false } },
         },
       },
     });
     return () => { chartInst.current?.destroy(); };
   }, [data, metric]);
 
+  const metricKeys: ForecastMetric[] = ['health', 'iri', 'critical', 'cost'];
+
   return (
-    <div className="p-5 space-y-4 fade-up">
-      <Panel
-        title="5-Year Network Deterioration Forecast"
-        badge={
-          <select
-            className="text-[11px] rounded px-2 py-1 outline-none"
-            style={{ background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)' }}
-            value={metric}
-            onChange={e => setMetric(e.target.value as ForecastMetric)}
-          >
-            <option value="health">Health Score</option>
-            <option value="iri">Avg IRI</option>
-            <option value="critical">Critical Roads</option>
-            <option value="cost">Repair Cost</option>
-          </select>
-        }
-      >
-        <div className="relative h-64">
+    <div style={{ padding: '28px 32px', background: '#f8f9fb', minHeight: '100vh', fontFamily: 'DM Sans, sans-serif' }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#111827', margin: 0 }}>5-Year Forecast</h1>
+        <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 0' }}>Network deterioration projection without intervention</p>
+      </div>
+
+      {/* Metric Selector */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        {metricKeys.map(m => {
+          const cfg = METRIC_CONFIG[m];
+          const active = metric === m;
+          return (
+            <button key={m} onClick={() => setMetric(m)} style={{
+              padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+              border: active ? `2px solid ${cfg.color}` : '2px solid #f0f0f0',
+              background: active ? cfg.color + '12' : '#fff',
+              color: active ? cfg.color : '#9ca3af',
+              cursor: 'pointer', transition: 'all 0.2s',
+              boxShadow: active ? `0 0 0 3px ${cfg.color}18` : 'none',
+            }}>{cfg.label}</button>
+          );
+        })}
+      </div>
+
+      {/* Main Chart */}
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0', marginBottom: 20 }}>
+        <div style={{ position: 'relative', height: 280 }}>
           <canvas ref={chartRef} />
         </div>
-      </Panel>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
         {/* Year cards */}
-        <div className="space-y-2">
-          {data.slice(1).map(d => (
-            <div key={d.year} className="rounded-xl p-3" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-semibold" style={{ color: 'var(--text2)' }}>Year {d.year}</span>
-                <span className="text-[11px] font-mono"
-                  style={{ color: d.health_score >= 65 ? 'var(--accent2)' : d.health_score >= 40 ? 'var(--accent3)' : 'var(--danger)' }}>
-                  Health {d.health_score}
-                </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {data.slice(1).map(d => {
+            const col = d.health_score >= 65 ? '#22c55e' : d.health_score >= 40 ? '#f97316' : '#ef4444';
+            return (
+              <div key={d.year} style={{ background: '#fff', borderRadius: 16, padding: '16px 20px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Year {d.year}</span>
+                  <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: col, fontWeight: 700, background: col + '14', padding: '2px 10px', borderRadius: 20 }}>Health {d.health_score}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {[['IRI', String(d.avg_iri), '#6b7280'], ['Critical', String(d.critical_roads), '#ef4444'], ['Cost', fmtCost(d.total_repair_cost_usd), '#6b7280']].map(([k, v, c]) => (
+                    <div key={k}>
+                      <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 2 }}>{k}</div>
+                      <div style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: c, fontWeight: 600 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-4 text-[10px]" style={{ color: 'var(--text3)' }}>
-                <span>IRI: <span className="font-mono" style={{ color: 'var(--text2)' }}>{d.avg_iri}</span></span>
-                <span>Critical: <span className="font-mono" style={{ color: 'var(--danger)' }}>{d.critical_roads}</span></span>
-                <span>Cost: <span className="font-mono" style={{ color: 'var(--text2)' }}>{fmtCost(d.total_repair_cost_usd)}</span></span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Full table */}
-        <div className="lg:col-span-2">
-          <Panel title="Year-by-Year Breakdown">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px] border-collapse">
-                <thead>
-                  <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                    {['Year', 'Health Score', 'Avg IRI', 'Max IRI', 'Critical', 'Repair Cost'].map(h => (
-                      <th key={h} className="py-2 px-2 text-left font-medium uppercase tracking-wider"
-                        style={{ color: 'var(--text3)', fontSize: 10 }}>{h}</th>
-                    ))}
+        {/* Full Table */}
+        <div style={{ background: '#fff', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: '0 0 20px' }}>Year-by-Year Breakdown</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                {['Year', 'Health Score', 'Avg IRI', 'Max IRI', 'Critical', 'Repair Cost'].map(h => (
+                  <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9ca3af' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((d, i) => {
+                const hCol = d.health_score >= 65 ? '#22c55e' : d.health_score >= 40 ? '#f97316' : '#ef4444';
+                return (
+                  <tr key={d.year} style={{ borderBottom: '1px solid #f9fafb', background: i % 2 ? '#fafafa' : '#fff' }}>
+                    <td style={{ padding: '12px', fontFamily: 'DM Mono, monospace', color: '#374151', fontWeight: 700 }}>Y{d.year}</td>
+                    <td style={{ padding: '12px' }}>
+                      <span style={{ fontFamily: 'DM Mono, monospace', color: hCol, fontWeight: 700, background: hCol + '12', padding: '2px 10px', borderRadius: 20 }}>{d.health_score}</span>
+                    </td>
+                    <td style={{ padding: '12px', fontFamily: 'DM Mono, monospace', color: '#6b7280' }}>{d.avg_iri}</td>
+                    <td style={{ padding: '12px', fontFamily: 'DM Mono, monospace', color: '#9ca3af' }}>{d.max_iri}</td>
+                    <td style={{ padding: '12px', fontFamily: 'DM Mono, monospace', color: '#ef4444', fontWeight: 600 }}>{d.critical_roads}</td>
+                    <td style={{ padding: '12px', fontFamily: 'DM Mono, monospace', color: '#374151' }}>{fmtCost(d.total_repair_cost_usd)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {data.map(d => (
-                    <tr key={d.year} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text2)' }}>Y{d.year}</td>
-                      <td className="py-2 px-2 font-mono"
-                        style={{ color: d.health_score >= 65 ? 'var(--accent2)' : d.health_score >= 40 ? 'var(--accent3)' : 'var(--danger)' }}>
-                        {d.health_score}
-                      </td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text2)' }}>{d.avg_iri}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text3)' }}>{d.max_iri}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--danger)' }}>{d.critical_roads}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text2)' }}>{fmtCost(d.total_repair_cost_usd)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

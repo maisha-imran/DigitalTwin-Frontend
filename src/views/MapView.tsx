@@ -1,16 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import Panel from '../components/Panel';
-import ProgressBar from '../components/ProgressBar';
-import Badge from '../components/Badge';
 import type { Segment, Condition } from '../types';
 import { iriToCondition, CONDITION_COLORS, fmtCost } from '../engine';
 
 const COND_ORDER: Condition[] = ['Critical', 'Poor', 'Moderate', 'Fair', 'Good'];
 
-interface Props {
-  segments: Segment[];
-}
+interface Props { segments: Segment[]; }
+
+const SliderControl = ({ label, value, min, max, step, onChange }: {
+  label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void;
+}) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <span style={{ fontSize: 12, color: '#6b7280', width: 110, flexShrink: 0, fontFamily: 'DM Sans, sans-serif' }}>{label}</span>
+    <div style={{ flex: 1, position: 'relative', height: 20, display: 'flex', alignItems: 'center' }}>
+      <div style={{ height: 6, background: '#f3f4f6', borderRadius: 6, width: '100%', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${((value - min) / (max - min)) * 100}%`, background: 'linear-gradient(90deg,#6366f1,#818cf8)', borderRadius: 6, transition: 'width 0.1s' }} />
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+    </div>
+    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: '#6366f1', width: 40, textAlign: 'right', fontWeight: 600 }}>{value.toFixed(2)}×</span>
+  </div>
+);
+
+const DetailRow = ({ label, value, color }: { label: string; value: string; color?: string }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f9fafb' }}>
+    <span style={{ fontSize: 12, color: '#9ca3af', fontFamily: 'DM Sans, sans-serif' }}>{label}</span>
+    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: color || '#374151', fontWeight: 500 }}>{value}</span>
+  </div>
+);
 
 export default function MapView({ segments }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -25,31 +44,21 @@ export default function MapView({ segments }: Props) {
 
   useEffect(() => {
     if (!mapRef.current || leafMap.current) return;
-    leafMap.current = L.map(mapRef.current, {
-      center: [12.9716, 77.5946], zoom: 12,
-      zoomControl: true,
-    });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap © CartoDB',
-      subdomains: 'abcd', maxZoom: 19,
+    leafMap.current = L.map(mapRef.current, { center: [12.9716, 77.5946], zoom: 12, zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap © CartoDB', subdomains: 'abcd', maxZoom: 19,
     }).addTo(leafMap.current);
     markerLayer.current = L.layerGroup().addTo(leafMap.current);
-
-    return () => {
-      leafMap.current?.remove();
-      leafMap.current = null;
-    };
+    return () => { leafMap.current?.remove(); leafMap.current = null; };
   }, []);
 
   useEffect(() => {
     if (!markerLayer.current) return;
     markerLayer.current.clearLayers();
-
     const scale = Math.sqrt((trafficScale + rainScale) / 2);
     const filtered = filter === 'All' ? segments : segments.filter(s => s.condition_predicted === filter);
     const step = filtered.length > 600 ? Math.ceil(filtered.length / 600) : 1;
     const toShow = filtered.filter((_, i) => i % step === 0);
-
     const counts: Partial<Record<Condition, number>> = {};
     toShow.forEach(seg => {
       const iri = Math.min(10, seg.iri_predicted * scale);
@@ -57,9 +66,7 @@ export default function MapView({ segments }: Props) {
       counts[cond] = (counts[cond] ?? 0) + 1;
       const color = CONDITION_COLORS[cond];
       const radius = 4 + (iri / 10) * 5;
-      const m = L.circleMarker([seg.lat, seg.lon], {
-        radius, color, fillColor: color, fillOpacity: 0.75, weight: 1, opacity: 0.9,
-      }).addTo(markerLayer.current!);
+      const m = L.circleMarker([seg.lat, seg.lon], { radius, color, fillColor: color, fillOpacity: 0.75, weight: 1.5, opacity: 1 }).addTo(markerLayer.current!);
       m.on('click', () => setSelected(seg));
     });
     setRiskCounts(counts);
@@ -67,124 +74,114 @@ export default function MapView({ segments }: Props) {
 
   const scaledIRI = selected ? Math.min(10, selected.iri_predicted * Math.sqrt((trafficScale + rainScale) / 2)) : 0;
   const scaledCond = selected ? iriToCondition(scaledIRI) : null;
-
-  // Scenario impact
   const scale = Math.sqrt((trafficScale + rainScale) / 2);
   const newAvgIRI = (segments.reduce((a, s) => a + Math.min(10, s.iri_predicted * scale), 0) / segments.length).toFixed(3);
   const newCritical = segments.filter(s => iriToCondition(Math.min(10, s.iri_predicted * scale)) === 'Critical').length;
+  const total = Object.values(riskCounts).reduce((a, b) => a + (b ?? 0), 0);
 
   return (
-    <div className="p-5 fade-up" style={{ height: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Map panel */}
-        <div className="lg:col-span-2 flex flex-col" style={{ minHeight: 0 }}>
-          <Panel title="Prediction Map — Bengaluru" noPad className="flex flex-col flex-1">
-            {/* Controls */}
-            <div className="px-4 py-3 space-y-2.5" style={{ borderBottom: '1px solid var(--border)' }}>
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] w-28 shrink-0" style={{ color: 'var(--text2)' }}>Traffic Scale</span>
-                <input type="range" min={0.5} max={2.5} step={0.05} value={trafficScale}
-                  onChange={e => setTrafficScale(parseFloat(e.target.value))} className="flex-1" />
-                <span className="text-[11px] font-mono w-10 text-right" style={{ color: 'var(--accent)' }}>{trafficScale.toFixed(2)}×</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-[11px] w-28 shrink-0" style={{ color: 'var(--text2)' }}>Rainfall Scale</span>
-                <input type="range" min={0.5} max={2.5} step={0.05} value={rainScale}
-                  onChange={e => setRainScale(parseFloat(e.target.value))} className="flex-1" />
-                <span className="text-[11px] font-mono w-10 text-right" style={{ color: 'var(--accent)' }}>{rainScale.toFixed(2)}×</span>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px]" style={{ color: 'var(--text3)' }}>Filter:</span>
-                {(['All', ...COND_ORDER] as const).map(c => (
-                  <Badge key={c}
-                    variant={filter === c ? (c === 'All' ? 'blue' : c === 'Critical' ? 'red' : c === 'Poor' ? 'warn' : 'blue') : 'ghost'}
-                    onClick={() => setFilter(c)}
-                  >{c}</Badge>
-                ))}
-              </div>
+    <div style={{ padding: '28px 32px', background: '#f8f9fb', height: 'calc(100vh - 52px)', display: 'flex', flexDirection: 'column', gap: 20, fontFamily: 'DM Sans, sans-serif', boxSizing: 'border-box' }}>
+      <div>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#111827', margin: 0 }}>Prediction Map</h1>
+        <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 0' }}>Bengaluru road network · Click markers for details</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20, flex: 1, minHeight: 0 }}>
+        {/* Map */}
+        <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Controls */}
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <SliderControl label="Traffic Scale" value={trafficScale} min={0.5} max={2.5} step={0.05} onChange={setTrafficScale} />
+            <SliderControl label="Rainfall Scale" value={rainScale} min={0.5} max={2.5} step={0.05} onChange={setRainScale} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', paddingTop: 4 }}>
+              <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Filter:</span>
+              {(['All', ...COND_ORDER] as const).map(c => {
+                const active = filter === c;
+                const col = c === 'All' ? '#6366f1' : CONDITION_COLORS[c];
+                return (
+                  <button key={c} onClick={() => setFilter(c)} style={{
+                    padding: '4px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+                    border: active ? `1.5px solid ${col}` : '1.5px solid #f0f0f0',
+                    background: active ? col + '14' : '#fafafa',
+                    color: active ? col : '#9ca3af', cursor: 'pointer', transition: 'all 0.15s',
+                  }}>{c}</button>
+                );
+              })}
             </div>
-            {/* Map */}
-            <div ref={mapRef} className="flex-1" style={{ minHeight: 320, borderRadius: '0 0 12px 12px' }} />
-          </Panel>
+          </div>
+          <div ref={mapRef} style={{ flex: 1, minHeight: 0 }} />
         </div>
 
-        {/* Side panels */}
-        <div className="flex flex-col gap-3 overflow-y-auto">
-          <Panel title="Network Risk">
-            <div className="space-y-2.5">
+        {/* Sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto' }}>
+          {/* Risk Panel */}
+          <div style={{ background: '#fff', borderRadius: 20, padding: 24, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 16px' }}>Network Risk</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {COND_ORDER.map(c => {
                 const n = riskCounts[c] ?? 0;
-                const total = Object.values(riskCounts).reduce((a, b) => a + (b ?? 0), 0);
                 const pct = total ? (n / total) * 100 : 0;
                 return (
-                  <div key={c} className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: CONDITION_COLORS[c] }} />
-                    <span className="text-[11px] flex-1" style={{ color: 'var(--text2)' }}>{c}</span>
-                    <ProgressBar pct={pct} color={CONDITION_COLORS[c]} height={5} />
-                    <span className="text-[11px] font-mono w-6 text-right shrink-0" style={{ color: 'var(--text3)' }}>{n}</span>
+                  <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 4, background: CONDITION_COLORS[c], flexShrink: 0, display: 'inline-block' }} />
+                    <span style={{ fontSize: 12, flex: 1, color: '#374151' }}>{c}</span>
+                    <div style={{ width: 80, height: 5, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: CONDITION_COLORS[c], borderRadius: 4 }} />
+                    </div>
+                    <span style={{ fontSize: 12, fontFamily: 'DM Mono, monospace', color: '#9ca3af', width: 22, textAlign: 'right' }}>{n}</span>
                   </div>
                 );
               })}
             </div>
-          </Panel>
+          </div>
 
-          <Panel title="Segment Detail">
+          {/* Segment Detail */}
+          <div style={{ background: '#fff', borderRadius: 20, padding: 24, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 14px' }}>Segment Detail</h3>
             {!selected ? (
-              <p className="text-[12px] text-center py-5" style={{ color: 'var(--text3)' }}>Click a marker on the map</p>
+              <div style={{ textAlign: 'center', padding: '20px 0', color: '#d1d5db', fontSize: 13 }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>📍</div>
+                Click a marker on the map
+              </div>
             ) : (
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{selected.edge_id}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#374151', fontFamily: 'DM Mono, monospace' }}>{selected.edge_id}</span>
                   {scaledCond && (
-                    <span className="text-[11px] px-2 py-0.5 rounded font-medium"
-                      style={{ background: CONDITION_COLORS[scaledCond] + '22', color: CONDITION_COLORS[scaledCond] }}>
-                      {scaledCond}
-                    </span>
+                    <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 20, background: CONDITION_COLORS[scaledCond] + '18', color: CONDITION_COLORS[scaledCond], fontWeight: 700 }}>{scaledCond}</span>
                   )}
                 </div>
-                <table className="w-full text-[11px]">
-                  <tbody>
-                    {[
-                      ['Road Type', selected.road_type],
-                      ['Lanes', selected.lanes],
-                      ['Speed Limit', `${selected.speed_limit} km/h`],
-                      ['Length', `${Math.round(selected.length_m)} m`],
-                      ['Traffic Vol.', selected.traffic_volume.toLocaleString()],
-                      ['Rainfall', `${selected.rainfall_mm} mm`],
-                      ['Age Factor', selected.age_factor],
-                      ['IRI Current', selected.iri_current.toFixed(3)],
-                      ['IRI Predicted (scenario)', scaledIRI.toFixed(3)],
-                      ['Δ IRI', `+${selected.deterioration_delta}`],
-                      ['Urgency', selected.urgency_predicted],
-                      ['Repair Cost', fmtCost(selected.repair_cost_usd)],
-                      ['Priority Score', selected.priority_score],
-                    ].map(([k, v]) => (
-                      <tr key={String(k)}>
-                        <td className="py-1" style={{ color: 'var(--text3)' }}>{k}</td>
-                        <td className="py-1 text-right font-mono" style={{ color: 'var(--text2)' }}>{String(v)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {[
+                  ['Road Type', selected.road_type],
+                  ['Lanes', String(selected.lanes)],
+                  ['Speed Limit', `${selected.speed_limit} km/h`],
+                  ['Length', `${Math.round(selected.length_m)} m`],
+                  ['Traffic Vol.', selected.traffic_volume.toLocaleString()],
+                  ['Rainfall', `${selected.rainfall_mm} mm`],
+                  ['IRI Current', selected.iri_current.toFixed(3)],
+                  ['IRI Predicted', scaledIRI.toFixed(3)],
+                  ['Δ IRI', `+${selected.deterioration_delta}`],
+                  ['Repair Cost', fmtCost(selected.repair_cost_usd)],
+                ].map(([k, v]) => <DetailRow key={String(k)} label={String(k)} value={String(v)} color={k === 'Δ IRI' ? '#ef4444' : k === 'Repair Cost' ? '#6366f1' : undefined} />)}
               </div>
             )}
-          </Panel>
+          </div>
 
-          <Panel title="Scenario Impact">
-            <div className="space-y-2.5">
-              {[
-                ['Avg IRI (scenario)', newAvgIRI, 'var(--warn)'],
-                ['Critical Roads', String(newCritical), 'var(--danger)'],
-                ['Traffic Scale', `${trafficScale.toFixed(2)}×`, 'var(--text2)'],
-                ['Rainfall Scale', `${rainScale.toFixed(2)}×`, 'var(--text2)'],
-              ].map(([k, v, col]) => (
-                <div key={k} className="flex justify-between text-[12px]">
-                  <span style={{ color: 'var(--text3)' }}>{k}</span>
-                  <span className="font-mono" style={{ color: col }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </Panel>
+          {/* Scenario Impact */}
+          <div style={{ background: '#fff', borderRadius: 20, padding: 24, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: '0 0 14px' }}>Scenario Impact</h3>
+            {[
+              ['Avg IRI (scenario)', newAvgIRI, '#f97316'],
+              ['Critical Roads', String(newCritical), '#ef4444'],
+              ['Traffic Scale', `${trafficScale.toFixed(2)}×`, '#6366f1'],
+              ['Rainfall Scale', `${rainScale.toFixed(2)}×`, '#6366f1'],
+            ].map(([k, v, c]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f9fafb' }}>
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>{k}</span>
+                <span style={{ fontSize: 13, fontFamily: 'DM Mono, monospace', color: c, fontWeight: 700 }}>{v}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

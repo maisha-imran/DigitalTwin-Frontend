@@ -1,25 +1,21 @@
 import { useState, useMemo } from 'react';
-import Panel from '../components/Panel';
-import StatCard from '../components/StatCard';
-import Badge from '../components/Badge';
-import ProgressBar from '../components/ProgressBar';
 import type { Segment, Urgency } from '../types';
 import { CONDITION_COLORS, URGENCY_COLORS, fmtCost } from '../engine';
 
 const URGENCY_ORDER: Urgency[] = ['Immediate', 'High', 'Medium', 'Low', 'None'];
 
-interface Props {
-  segments: Segment[];
-}
+const urgencyBg: Record<Urgency, string> = {
+  Immediate: 'rgba(239,68,68,0.1)', High: 'rgba(249,115,22,0.1)',
+  Medium: 'rgba(99,102,241,0.1)', Low: 'rgba(34,197,94,0.1)', None: 'rgba(156,163,175,0.1)',
+};
+
+interface Props { segments: Segment[]; }
 
 export default function Maintenance({ segments }: Props) {
   const [search, setSearch] = useState('');
   const [urgencyFilter, setUrgencyFilter] = useState<Urgency | 'all'>('all');
 
-  const ranked = useMemo(
-    () => [...segments].sort((a, b) => b.iri_predicted - a.iri_predicted),
-    [segments]
-  );
+  const ranked = useMemo(() => [...segments].sort((a, b) => b.iri_predicted - a.iri_predicted), [segments]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -55,106 +51,112 @@ export default function Maintenance({ segments }: Props) {
     a.click();
   }
 
+  const summaryCards = [
+    { label: 'Immediate Action', urgency: 'Immediate' as Urgency, color: '#ef4444' },
+    { label: 'High Priority', urgency: 'High' as Urgency, color: '#f97316' },
+    { label: 'Medium Priority', urgency: 'Medium' as Urgency, color: '#6366f1' },
+    { label: 'Total Budget', urgency: null, color: '#111827' },
+  ];
+
   return (
-    <div className="p-5 space-y-4 fade-up">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Immediate Action" value={summaries.Immediate.count}
-          sub={fmtCost(summaries.Immediate.cost)} valueColor="var(--danger)" />
-        <StatCard label="High Priority" value={summaries.High.count}
-          sub={fmtCost(summaries.High.cost)} valueColor="var(--accent3)" />
-        <StatCard label="Medium Priority" value={summaries.Medium.count}
-          sub={fmtCost(summaries.Medium.cost)} valueColor="var(--accent)" />
-        <StatCard label="Total Budget Needed" value={fmtCost(totalCost)} sub="estimated repair" />
+    <div style={{ padding: '28px 32px', background: '#f8f9fb', minHeight: '100vh', fontFamily: 'DM Sans, sans-serif' }}>
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: '#111827', margin: 0 }}>Maintenance Plan</h1>
+        <p style={{ fontSize: 13, color: '#9ca3af', margin: '4px 0 0' }}>Priority-ranked road repair schedule</p>
       </div>
 
-      <Panel
-        title="Priority Ranking"
-        badge={<Badge variant="blue">{filtered.length} roads</Badge>}
-      >
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        {summaryCards.map(({ label, urgency, color }) => {
+          const data = urgency ? summaries[urgency] : null;
+          return (
+            <div key={label} style={{ background: '#fff', borderRadius: 18, padding: '20px 24px', boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#9ca3af', marginBottom: 8 }}>{label}</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color, fontFamily: 'DM Mono, monospace', lineHeight: 1 }}>
+                {data ? data.count : fmtCost(totalCost)}
+              </div>
+              {data && <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 6 }}>{fmtCost(data.cost)} estimated</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Table Panel */}
+      <div style={{ background: '#fff', borderRadius: 20, padding: 28, boxShadow: '0 2px 12px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0' }}>
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: 0 }}>Priority Ranking</h3>
+            <span style={{ fontSize: 12, color: '#6366f1', background: 'rgba(99,102,241,0.1)', padding: '3px 12px', borderRadius: 20, fontWeight: 600 }}>{filtered.length} roads</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <input
-              className="rounded-lg px-3 py-1.5 text-[12px] outline-none"
-              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text)', width: 220 }}
-              placeholder="Search segment ID or road type…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              style={{ borderRadius: 10, padding: '9px 14px', fontSize: 13, border: '1px solid #f0f0f0', background: '#f9fafb', color: '#374151', outline: 'none', width: 220 }}
+              placeholder="Search segment or road type…"
+              value={search} onChange={e => setSearch(e.target.value)}
             />
             <select
-              className="rounded-lg px-3 py-1.5 text-[12px] outline-none"
-              style={{ background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)' }}
-              value={urgencyFilter}
-              onChange={e => setUrgencyFilter(e.target.value as Urgency | 'all')}
+              style={{ borderRadius: 10, padding: '9px 14px', fontSize: 13, border: '1px solid #f0f0f0', background: '#f9fafb', color: '#6b7280', outline: 'none' }}
+              value={urgencyFilter} onChange={e => setUrgencyFilter(e.target.value as Urgency | 'all')}
             >
               <option value="all">All Urgency</option>
               {URGENCY_ORDER.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
+            <button onClick={exportCSV} style={{
+              borderRadius: 10, padding: '9px 18px', fontSize: 13, fontWeight: 600,
+              border: '1px solid #6366f1', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer',
+            }}>↓ Export CSV</button>
           </div>
-          <button
-            onClick={exportCSV}
-            className="text-[12px] px-3 py-1.5 rounded-lg font-medium transition-colors"
-            style={{ background: 'rgba(59,130,246,0.1)', color: 'var(--accent)', border: '1px solid var(--accent)' }}
-          >
-            ↓ Export CSV
-          </button>
         </div>
 
         {/* Table */}
-        <div className="overflow-y-auto" style={{ maxHeight: 420 }}>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['#', 'Segment', 'Type', 'Pred IRI', 'Curr IRI', 'Δ IRI', 'Condition', 'Urgency', 'Repair Cost', 'Priority'].map(h => (
-                    <th key={h} className="py-2 px-2 text-left font-medium uppercase tracking-wider"
-                      style={{ color: 'var(--text3)', fontSize: 10 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s, i) => {
-                  const col = CONDITION_COLORS[s.condition_predicted];
-                  return (
-                    <tr key={s.edge_id} className="transition-colors"
-                      style={{ borderBottom: '1px solid var(--border)' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                      <td className="py-2 px-2" style={{ color: 'var(--text3)' }}>{i + 1}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text2)', fontSize: 10 }}>{s.edge_id}</td>
-                      <td className="py-2 px-2" style={{ color: 'var(--text2)' }}>{s.road_type}</td>
-                      <td className="py-2 px-2">
-                        <span className="inline-flex items-center justify-center w-12 h-5 rounded text-[10px] font-semibold font-mono"
-                          style={{ background: col + '22', color: col }}>{s.iri_predicted.toFixed(2)}</span>
-                      </td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text3)' }}>{s.iri_current.toFixed(2)}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--danger)' }}>+{s.deterioration_delta.toFixed(3)}</td>
-                      <td className="py-2 px-2">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: col + '22', color: col }}>{s.condition_predicted}</span>
-                      </td>
-                      <td className="py-2 px-2">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{ background: URGENCY_COLORS[s.urgency_predicted] + '22', color: URGENCY_COLORS[s.urgency_predicted] }}>
-                          {s.urgency_predicted}
-                        </span>
-                      </td>
-                      <td className="py-2 px-2 font-mono" style={{ color: 'var(--text2)', fontSize: 10 }}>{fmtCost(s.repair_cost_usd)}</td>
-                      <td className="py-2 px-2">
-                        <div className="flex items-center gap-1.5">
-                          <ProgressBar pct={s.priority_score * 100} color={col} height={5} />
-                          <span className="font-mono w-7 text-right shrink-0" style={{ color: 'var(--text3)', fontSize: 10 }}>
-                            {(s.priority_score * 100).toFixed(0)}%
-                          </span>
+        <div style={{ overflowY: 'auto', maxHeight: 460, borderRadius: 12, border: '1px solid #f0f0f0' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead style={{ position: 'sticky', top: 0, background: '#fafafa', zIndex: 1 }}>
+              <tr>
+                {['#', 'Segment', 'Type', 'Pred IRI', 'Curr IRI', 'Δ IRI', 'Condition', 'Urgency', 'Repair Cost', 'Priority'].map(h => (
+                  <th key={h} style={{ padding: '12px 10px', textAlign: 'left', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#9ca3af', borderBottom: '1px solid #f0f0f0' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((s, i) => {
+                const col = CONDITION_COLORS[s.condition_predicted];
+                const urgCol = URGENCY_COLORS[s.urgency_predicted];
+                return (
+                  <tr key={s.edge_id} style={{ borderBottom: '1px solid #f9fafb', transition: 'background 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#fafafa')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <td style={{ padding: '10px', color: '#d1d5db', fontFamily: 'DM Mono, monospace' }}>{i + 1}</td>
+                    <td style={{ padding: '10px', fontFamily: 'DM Mono, monospace', color: '#374151', fontSize: 11 }}>{s.edge_id}</td>
+                    <td style={{ padding: '10px', color: '#6b7280' }}>{s.road_type}</td>
+                    <td style={{ padding: '10px' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '2px 8px', borderRadius: 8, background: col + '18', color: col, fontSize: 11, fontFamily: 'DM Mono, monospace', fontWeight: 700 }}>{s.iri_predicted.toFixed(2)}</span>
+                    </td>
+                    <td style={{ padding: '10px', fontFamily: 'DM Mono, monospace', color: '#9ca3af' }}>{s.iri_current.toFixed(2)}</td>
+                    <td style={{ padding: '10px', fontFamily: 'DM Mono, monospace', color: '#ef4444', fontWeight: 600 }}>+{s.deterioration_delta.toFixed(3)}</td>
+                    <td style={{ padding: '10px' }}>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: col + '18', color: col, fontWeight: 600 }}>{s.condition_predicted}</span>
+                    </td>
+                    <td style={{ padding: '10px' }}>
+                      <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: urgencyBg[s.urgency_predicted], color: urgCol, fontWeight: 600 }}>{s.urgency_predicted}</span>
+                    </td>
+                    <td style={{ padding: '10px', fontFamily: 'DM Mono, monospace', color: '#6b7280', fontSize: 11 }}>{fmtCost(s.repair_cost_usd)}</td>
+                    <td style={{ padding: '10px', minWidth: 100 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ flex: 1, height: 5, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${s.priority_score * 100}%`, background: col, borderRadius: 4 }} />
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9ca3af', width: 28, textAlign: 'right' }}>{(s.priority_score * 100).toFixed(0)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </Panel>
+      </div>
     </div>
   );
 }
