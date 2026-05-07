@@ -4,12 +4,26 @@ interface Props {
   height?: number;
 }
 
-export default function ProgressBar({ pct, color = 'var(--accent)', height = 6 }: Props) {
+export default function ProgressBar({ pct, color = '#6366f1', height = 6 }: Props) {
+  const clamped = Math.min(100, Math.max(0, pct));
   return (
-    <div className="rounded-full overflow-hidden w-full" style={{ background: 'var(--bg3)', height }}>
+    <div
+      style={{
+        width: '100%',
+        height,
+        background: '#f3f4f6',
+        borderRadius: height,
+        overflow: 'hidden',
+      }}
+    >
       <div
-        className="h-full rounded-full transition-all duration-500"
-        style={{ width: `${Math.min(100, Math.max(0, pct))}%`, background: color }}
+        style={{
+          height: '100%',
+          width: `${clamped}%`,
+          background: color,
+          borderRadius: height,
+          transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)',
+        }}
       />
     </div>
   );
